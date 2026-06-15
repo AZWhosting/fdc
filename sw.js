@@ -1,36 +1,32 @@
 // Service worker - Fond de caisse
-// Change la version (v1 -> v2...) a chaque mise a jour pour forcer le rechargement.
-const CACHE = 'fond-caisse-v1';
-const ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
-];
+// Strategie "reseau d'abord" : quand tu es en ligne, l'app charge TOUJOURS
+// la derniere version (plus besoin de changer un numero de version a chaque maj).
+// Une copie est gardee en cache et ne sert que si le reseau est indisponible.
+const CACHE = 'fond-caisse';
 
-self.addEventListener('install', function (e) {
+self.addEventListener('install', function () {
   self.skipWaiting();
-  e.waitUntil(
-    caches.open(CACHE).then(function (c) { return c.addAll(ASSETS); }).catch(function () {})
-  );
 });
 
 self.addEventListener('activate', function (e) {
-  e.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(keys.map(function (k) {
-        if (k !== CACHE) { return caches.delete(k); }
-      }));
-    }).then(function () { return self.clients.claim(); })
-  );
+  e.waitUntil(self.clients.claim());
 });
 
 self.addEventListener('fetch', function (e) {
   if (e.request.method !== 'GET') { return; }
   e.respondWith(
-    caches.match(e.request).then(function (cached) {
-      return cached || fetch(e.request);
-    })
+    fetch(e.request)
+      .then(function (resp) {
+        if (resp && (resp.ok || resp.type === 'opaque')) {
+          var copy = resp.clone();
+          caches.open(CACHE).then(function (c) { c.put(e.request, copy); }).catch(function () {});
+        }
+        return resp;
+      })
+      .catch(function () {
+        return caches.match(e.request).then(function (cached) {
+          return cached || caches.match('./index.html');
+        });
+      })
   );
 });
